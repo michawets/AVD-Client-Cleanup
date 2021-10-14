@@ -1,4 +1,5 @@
 param (
+    [switch]$SilentRun,
     [switch]$RemovePersonalSettings
 )
 #Requires -RunAsAdministrator
@@ -16,8 +17,25 @@ if ($null -eq (Get-Item -Path $ScriptLocation -ErrorAction SilentlyContinue)) {
 }
 $logFile = ("{0}\CleanupAvdClient_{1}.log" -f $ScriptLocation, ((Get-Date).ToString("o").Replace(":", "_")))
 Start-Transcript -Path $logFile
-
 Write-Host ("Started at {0}" -f (Get-Date).ToString("o")) -ForegroundColor Cyan
+
+
+#region functions
+function Get-PromptResponse {
+    param (
+        [string]$Prompt
+    )
+    if (!($SilentRun)) {
+        do {
+            $myResponse = Read-Host -Prompt $Prompt
+        } while ($myResponse -ne "y" -AND $myResponse -ne "n")
+    }
+    else {
+        $myResponse = "Y"
+    }
+    return $myResponse
+}
+#endregion
 
 Write-Host ("Backups can be found here: '{0}'" -f $ScriptLocation) -ForegroundColor Cyan
 
@@ -32,6 +50,7 @@ Move-Item -Path ("{0}\*.reg" -f $ScriptLocation) -Destination $tempFolderPath
 #Stopping process if there
 Write-Host "Stopping running instances of Remote Desktop client (if running)"
 Get-Process -Name "msrdcw" -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name "msrdc" -ErrorAction SilentlyContinue | Stop-Process -Force
 
 #region Machine installation
 #Get list of installed location IDs
@@ -62,7 +81,7 @@ else {
 
             #Removing
             Write-Host ("Do you want to remove this old entry? (Recommended to remove!)") -ForegroundColor Cyan
-            $response = Read-Host -Prompt "Y/N"
+            $response = Get-PromptResponse -Prompt "Y/N"
             if ($response -eq "Y") {
                 Remove-ItemProperty -Path $installedGuidsPath -Name $installedGuid -Force
                 Write-Host "Removed" -ForegroundColor Green
@@ -70,102 +89,102 @@ else {
             else {
                 Write-Host "Skipping..."
             }
-            continue
         }
+        else {
+            Write-Host ("Active installation found at location: '{0}'" -f $productPath) -ForegroundColor Green
+            #Backup
+            $shortProductPath = $productPath.Replace("Registry::", "")
+            Write-Host ("Creating backup of Registry '{0}'" -f $shortProductPath)
+            & reg export $shortProductPath "c:\AvdClientRepair\$installedGuid.reg"
+            Write-Host "OK" -ForegroundColor Green
 
-        Write-Host ("Active installation found at location: '{0}'" -f $productPath) -ForegroundColor Green
-        #Backup
-        $shortProductPath = $productPath.Replace("Registry::", "")
-        Write-Host ("Creating backup of Registry '{0}'" -f $shortProductPath)
-        & reg export $shortProductPath "c:\AvdClientRepair\$installedGuid.reg"
-        Write-Host "OK" -ForegroundColor Green
-
-        Write-Host ("Getting Uninstall GUID from Product...")
-        #get Details
-        $ProductDetails = Get-Item -Path $productPath
-        #Check ProductIcon for GUID
-        if ($null -eq $ProductDetails.GetValue("ProductIcon")) {
-            Write-Warning "BUG! ProductIcon not found?? Please report to admin"
-            continue
-        }
+            Write-Host ("Getting Uninstall GUID from Product...")
+            #get Details
+            $ProductDetails = Get-Item -Path $productPath
+            #Check ProductIcon for GUID
+            if ($null -eq $ProductDetails.GetValue("ProductIcon")) {
+                Write-Warning "BUG! ProductIcon not found?? Please report to admin"
+                continue
+            }
     
-        #Get ProductGuid
-        $ProductId = $ProductDetails.GetValue("ProductIcon").Split("\") | Where-Object { $_ -like "{*" }
-        if ($null -eq $ProductId) {
-            Write-Warning "BUG! ProductId not found?? Please report to admin"
-            continue
-        }
-        Write-Host "OK" -ForegroundColor Green
+            #Get ProductGuid
+            $ProductId = $ProductDetails.GetValue("ProductIcon").Split("\") | Where-Object { $_ -like "{*" }
+            if ($null -eq $ProductId) {
+                Write-Warning "BUG! ProductId not found?? Please report to admin"
+                continue
+            }
+            Write-Host "OK" -ForegroundColor Green
 
-        #test if uninstall path is found
-        $uninstallRegPath = ("Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{0}" -f $ProductId)
-        Write-Host ("Testing Installed Path in Registry '{0}'" -f $uninstallRegPath)
-        if (!(Test-Path -Path $uninstallRegPath)) {
-            Write-Warning ("Installed Path not found @ '{0}'. Possible old intallation trace..." -f $uninstallRegPath)
-            #Removing
-            Write-Host ("Do you want to remove this old entry? (Recommended to remove!)") -ForegroundColor Cyan
-            $response = Read-Host -Prompt "Y/N"
+            #test if uninstall path is found
+            $uninstallRegPath = ("Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{0}" -f $ProductId)
+            Write-Host ("Testing Installed Path in Registry '{0}'" -f $uninstallRegPath)
+            if (!(Test-Path -Path $uninstallRegPath)) {
+                Write-Warning ("Installed Path not found @ '{0}'. Possible old intallation trace..." -f $uninstallRegPath)
+                #Removing
+                Write-Host ("Do you want to remove this old entry? (Recommended to remove!)") -ForegroundColor Cyan
+                $response = Get-PromptResponse -Prompt "Y/N"
+                if ($response -eq "Y") {
+                    Remove-Item -Path $productPath -Recurse -Force
+                    Remove-ItemProperty -Path $installedGuidsPath -Name $installedGuid -Force
+                    Write-Host "Removed" -ForegroundColor Green
+                }
+                else {
+                    Write-Host "Skipping..."
+                }
+                continue
+            }
+            Write-Host "OK" -ForegroundColor Green
+
+            Write-Host "Validating content..."
+            $UninstallInfo = Get-Item -Path $uninstallRegPath
+            #test if uninstall path is from AVD client
+            $installPath = $UninstallInfo.GetValue("InstallLocation")
+            if (!($installPath -like "*\Remote Desktop\*")) {
+                Write-Warning ("BUG! InstallLocation is not for AVD?? ('{0}') Please report to admin" -f $installPath)
+                continue
+            }
+
+            Write-Host ("Installed Path in Registry is OK! '{0}'" -f $installPath) -ForegroundColor Green
+            #Backup
+            $shortInstallPath = $uninstallRegPath.Replace("Registry::", "")
+            Write-Host ("Creating backup of Registry '{0}'" -f $shortInstallPath)
+            & reg export $shortInstallPath "c:\AvdClientRepair\$ProductId.reg"
+            Write-Host "OK" -ForegroundColor Green
+
+            Write-Host ("Do you want to remove this Uninstall Registry entry? (Recommended to remove!)") -ForegroundColor Cyan
+            $response = Get-PromptResponse -Prompt "Y/N"
             if ($response -eq "Y") {
-                Remove-Item -Path $productPath -Recurse -Force
-                Remove-ItemProperty -Path $installedGuidsPath -Name $installedGuid -Force
+                Remove-Item -Path $uninstallRegPath -Force
                 Write-Host "Removed" -ForegroundColor Green
             }
             else {
-                Write-Host "Skipping..."
+                Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
+                continue
             }
-            continue
-        }
-        Write-Host "OK" -ForegroundColor Green
 
-        Write-Host "Validating content..."
-        $UninstallInfo = Get-Item -Path $uninstallRegPath
-        #test if uninstall path is from AVD client
-        $installPath = $UninstallInfo.GetValue("InstallLocation")
-        if (!($installPath -like "*\Remote Desktop\*")) {
-            Write-Warning ("BUG! InstallLocation is not for AVD?? ('{0}') Please report to admin" -f $installPath)
-            continue
-        }
+            #Check physical path of AVD client
+            Write-Host "Checking Installation Path of AVD client..."
+            if (!(Test-Path -Path $installPath)) {
+                Write-Warning ("BUG! InstallLocation is not found ('{0}') Please report to admin" -f $installPath)
+                continue
+            }
 
-        Write-Host ("Installed Path in Registry is OK! '{0}'" -f $installPath) -ForegroundColor Green
-        #Backup
-        $shortInstallPath = $uninstallRegPath.Replace("Registry::", "")
-        Write-Host ("Creating backup of Registry '{0}'" -f $shortInstallPath)
-        & reg export $shortInstallPath "c:\AvdClientRepair\$ProductId.reg"
-        Write-Host "OK" -ForegroundColor Green
+            Write-Host ("Installed Path is OK! '{0}'" -f $installPath) -ForegroundColor Green
+            Write-Host ("Do you want to remove this Folder? (Recommended to remove!)") -ForegroundColor Cyan
+            $response = Get-PromptResponse -Prompt "Y/N"
+            if ($response -eq "Y") {
+                Remove-Item -Path $installPath -Recurse -Force
+                Write-Host "Removed" -ForegroundColor Green
+            }
+            else {
+                Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
+                continue
+            }
 
-        Write-Host ("Do you want to remove this Uninstall Registry entry? (Recommended to remove!)") -ForegroundColor Cyan
-        $response = Read-Host -Prompt "Y/N"
-        if ($response -eq "Y") {
-            Remove-Item -Path $uninstallRegPath -Force
-            Write-Host "Removed" -ForegroundColor Green
+            #Cleanup of the Product Path (final step)
+            Remove-ItemProperty -Path $installedGuidsPath -Name $installedGuid -Force
+            Remove-Item -Path $productPath -Recurse -Force
         }
-        else {
-            Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
-            continue
-        }
-
-        #Check physical path of AVD client
-        Write-Host "Checking Installation Path of AVD client..."
-        if (!(Test-Path -Path $installPath)) {
-            Write-Warning ("BUG! InstallLocation is not found ('{0}') Please report to admin" -f $installPath)
-            continue
-        }
-
-        Write-Host ("Installed Path is OK! '{0}'" -f $installPath) -ForegroundColor Green
-        Write-Host ("Do you want to remove this Folder? (Recommended to remove!)") -ForegroundColor Cyan
-        $response = Read-Host -Prompt "Y/N"
-        if ($response -eq "Y") {
-            Remove-Item -Path $installPath -Recurse -Force
-            Write-Host "Removed" -ForegroundColor Green
-        }
-        else {
-            Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
-            continue
-        }
-
-        #Cleanup of the Product Path (final step)
-        Remove-ItemProperty -Path $installedGuidsPath -Name $installedGuid -Force
-        Remove-Item -Path $productPath -Recurse -Force
     }
     Write-Host "Loop done" -ForegroundColor Green
 }
@@ -211,7 +230,7 @@ else {
         Write-Warning ("Installed Path not found @ '{0}'. Possible old intallation trace..." -f $uninstallRegPath)
         #Removing
         Write-Host ("Do you want to remove this old entry? (Recommended to remove!)") -ForegroundColor Cyan
-        $response = Read-Host -Prompt "Y/N"
+        $response = Get-PromptResponse -Prompt "Y/N"
         if ($response -eq "Y") {
             Remove-Item -Path $userInstallRegKey -Recurse -Force
             Write-Host "Removed" -ForegroundColor Green
@@ -240,7 +259,7 @@ else {
     Write-Host "OK" -ForegroundColor Green
 
     Write-Host ("Do you want to remove this Uninstall Registry entry? (Recommended to remove!)") -ForegroundColor Cyan
-    $response = Read-Host -Prompt "Y/N"
+    $response = Get-PromptResponse -Prompt "Y/N"
     if ($response -eq "Y") {
         Remove-Item -Path $uninstallRegPath -Force
         Write-Host "Removed" -ForegroundColor Green
@@ -259,7 +278,7 @@ else {
 
     Write-Host ("Installed Path is OK! '{0}'" -f $installPath) -ForegroundColor Green
     Write-Host ("Do you want to remove this Folder? (Recommended to remove!)") -ForegroundColor Cyan
-    $response = Read-Host -Prompt "Y/N"
+    $response = Get-PromptResponse -Prompt "Y/N"
     if ($response -eq "Y") {
         Remove-Item -Path $installPath -Recurse -Force
         Write-Host "Removed" -ForegroundColor Green
@@ -274,6 +293,7 @@ else {
 }
 #endregion
 
+#region uninstall cleanup (leftovers)
 #Loop through the uninstall list
 Write-Host "Looking in the Uninstall Registry keys..."
 $uninstallRootRegPath = ("Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\")
@@ -302,7 +322,7 @@ foreach ($uninstallRegItem in $uninstallRegList) {
 
     Write-Host ("Installed Path is OK! '{0}'" -f $installPath) -ForegroundColor Green
     Write-Host ("Do you want to remove this Folder? (Recommended to remove!)") -ForegroundColor Cyan
-    $response = Read-Host -Prompt "Y/N"
+    $response = Get-PromptResponse -Prompt "Y/N"
     if ($response -eq "Y") {
         Remove-Item -Path $installPath -Recurse -Force
         Write-Host "Removed" -ForegroundColor Green
@@ -315,7 +335,9 @@ foreach ($uninstallRegItem in $uninstallRegList) {
     #Cleanup of the Product Path (final step)
     Remove-Item -Path ("Registry::{0}" -f $uninstallRegItem.Name) -Recurse -Force
 }
+#endregion
 
+#region Personal Settings
 if ($RemovePersonalSettings) {
     $personalRegPath = "Registry::HKEY_CURRENT_USER\Software\Microsoft\RdClientRadc"
     Write-Host ("Checking Personal Registry Path ('{0}')" -f $personalRegPath)
@@ -332,7 +354,7 @@ if ($RemovePersonalSettings) {
         Write-Host "OK" -ForegroundColor Green
 
         Write-Host ("Do you want to remove this Personal Registry entry? (Recommended to remove!)") -ForegroundColor Cyan
-        $response = Read-Host -Prompt "Y/N"
+        $response = Get-PromptResponse -Prompt "Y/N"
         if ($response -eq "Y") {
             Remove-Item -Path $personalRegPath -Recurse -Force
             Write-Host "Removed" -ForegroundColor Green
@@ -343,6 +365,84 @@ if ($RemovePersonalSettings) {
         }
     }
 }
+#endregion
+
+#region StartMenu
+Write-Host "Cleaning up Start Menu icons..."
+$WScriptShell = New-Object -ComObject WScript.Shell
+$UserInstallationStartMenu = [System.IO.Path]::Combine($env:APPDATA, "Microsoft\Windows\Start Menu\Programs")
+if (Test-Path -Path $UserInstallationStartMenu) {
+    Write-Host ("Checking if User Start Menu contains shortcut(s) ('{0}')" -f $UserInstallationStartMenu)
+    $defaultUserInstallationStartMenuItemLocation = [System.IO.Path]::Combine($UserInstallationStartMenu, "Remote Desktop.lnk")
+    if (Test-Path -Path $defaultUserInstallationStartMenuItemLocation) {
+        $defaultUserInstallationStartMenuItem = $WScriptShell.CreateShortcut($defaultUserInstallationStartMenuItemLocation)
+        if ($defaultUserInstallationStartMenuItem.TargetPath -like "*msrdcw.exe") {
+            Write-Host ("Shortcut found: '{0}'" -f $defaultUserInstallationStartMenuItemLocation) -ForegroundColor Green
+            Write-Host ("Do you want to remove this shortcut? (Recommended to remove!)") -ForegroundColor Cyan
+            $response = Get-PromptResponse -Prompt "Y/N"
+            if ($response -eq "Y") {
+                Remove-Item -Path $defaultUserInstallationStartMenuItemLocation -Force
+                Write-Host "Removed" -ForegroundColor Green
+            }
+            else {
+                Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
+            }
+        }
+    }
+    $oldUsersRDShortcutFolders = Get-ChildItem -Path $UserInstallationStartMenu -Directory -Filter "*(RD)*"
+    if ($null -ne $oldUsersRDShortcutFolders) {
+        Write-Host "Found some old shortcut folders in the User Startmenu, this is the list:" -ForegroundColor Green
+        $oldUsersRDShortcutFolders | Select-Object Name, LastWriteTime | Format-Table
+        Write-Host ("Do you want to remove these shortcut(s)? (Recommended to remove!)") -ForegroundColor Cyan
+        $response = Get-PromptResponse -Prompt "Y/N"
+        if ($response -eq "Y") {
+            $oldUsersRDShortcutFolders | Select-Object FullName -ExpandProperty FullName | Remove-Item -Recurse -Force
+            Write-Host "Removed" -ForegroundColor Green
+        }
+        else {
+            Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
+        }
+    }
+}
+$MachineInstallationStartMenu = [System.IO.Path]::Combine($env:ALLUSERSPROFILE, "Microsoft\Windows\Start Menu\Programs")
+if (Test-Path -Path $MachineInstallationStartMenu) {
+    Write-Host ("Checking if Machine Start Menu contains shortcut(s) ('{0}')" -f $MachineInstallationStartMenu)
+    $defaultMachineInstallationStartMenuItemLocation = [System.IO.Path]::Combine($MachineInstallationStartMenu, "Remote Desktop.lnk")
+    if (Test-Path -Path $defaultMachineInstallationStartMenuItemLocation) {
+        $defaultMachineInstallationStartMenuItem = $WScriptShell.CreateShortcut($defaultMachineInstallationStartMenuItemLocation)
+        if ($defaultMachineInstallationStartMenuItem.TargetPath -like "*msrdcw.exe") {
+            Write-Host ("Shortcut found: '{0}'" -f $defaultMachineInstallationStartMenuItemLocation) -ForegroundColor Green
+            Write-Host ("Do you want to remove this shortcut? (Recommended to remove!)") -ForegroundColor Cyan
+            $response = Get-PromptResponse -Prompt "Y/N"
+            if ($response -eq "Y") {
+                Remove-Item -Path $defaultMachineInstallationStartMenuItemLocation -Recurse -Force
+                Write-Host "Removed" -ForegroundColor Green
+            }
+            else {
+                Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
+            }
+        }
+    }
+    $oldMachineRDShortcutFolders = Get-ChildItem -Path $MachineInstallationStartMenu -Directory -Filter "*(RD)*"
+    if ($null -ne $oldMachineRDShortcutFolders) {
+        Write-Host "Found some old shortcut folders in the Machine level Startmenu, this is the list:" -ForegroundColor Green
+        $oldMachineRDShortcutFolders | Select-Object Name, LastWriteTime | Format-Table
+        Write-Host ("Do you want to remove these shortcut(s)? (Recommended to remove!)") -ForegroundColor Cyan
+        $response = Get-PromptResponse -Prompt "Y/N"
+        if ($response -eq "Y") {
+            $oldMachineRDShortcutFolders | Select-Object FullName -ExpandProperty FullName | Remove-Item -Force
+            Write-Host "Removed" -ForegroundColor Green
+        }
+        else {
+            Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
+        }
+    }
+}
+#endregion
+
+#Starting default browser to download latest AVD client
+Write-Host "Opening default browser to download the latest AVD client..."  -ForegroundColor Green
+Start-Process "https://docs.microsoft.com/en-us/azure/virtual-desktop/user-documentation/connect-windows-7-10?toc=/azure/virtual-desktop/toc.json&bc=/azure/virtual-desktop/breadcrumb/toc.json&WT.mc_id=EM-MVP-5003320"
 
 Write-Host "All Done..." -ForegroundColor Green
 Stop-Transcript
