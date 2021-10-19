@@ -2,14 +2,14 @@
 
 This script is to help you clean up an AVD Client installation.<br/>
 This could be helpful when you are unable to uninstall or update an existing installation.<br/>
-After the cleanup, your default browser will open to download the latest version of the AVD Client
+After the cleanup, your default browser will open to download the latest version of the AVD Client.
 
  > This script only deals with the Windows Installer edition of the AVD client. The Microsoft Store version is not in scope!
 
 ## Parameters
 
- - -SilentRun<br/>This parameter will remove all prompts and will remove all found entries automatically
- - -RemovePersonalSettings<br/>This parameter will allow the script to clean up all Personal settings in the registry. By default, this will be skipped, keeping your entries in the client when installing the AVD client again
+ - -SilentRun<br/>This parameter will remove all prompts and will remove all found entries automatically.
+ - -RemovePersonalSettings<br/>This parameter will allow the script to clean up all personal settings in the registry. By default, this will be skipped, keeping your entries in the client when installing the AVD client again.
 
 ## Example commands
 

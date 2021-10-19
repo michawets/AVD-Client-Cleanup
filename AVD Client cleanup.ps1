@@ -53,6 +53,7 @@ Get-Process -Name "msrdcw" -ErrorAction SilentlyContinue | Stop-Process -Force
 Get-Process -Name "msrdc" -ErrorAction SilentlyContinue | Stop-Process -Force
 
 #region Machine installation
+Write-Host "Machine installation" -ForegroundColor Cyan
 #Get list of installed location IDs
 $installedGuidsPath = "Registry::HKEY_CLASSES_ROOT\Installer\UpgradeCodes\15E4D53F33F0C6248B8AE3FCA4BDCFF5"
 Write-Host ("Testing Installed Guid Path in Registry '{0}' (Machine installation)" -f $installedGuidsPath)
@@ -192,104 +193,141 @@ else {
 #endregion
 
 #region User Installation
-
-$userInstallRegKey = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Installer\Products\58D5223B65144A744983A125B70FC7A1"
-Write-Host ("Checking User Install Reg Key '{0}'" -f $userInstallRegKey)
-if (!(Test-Path -Path $userInstallRegKey)) {
-    Write-Host "User Install Reg Key not found. Skipping User installation path"
+Write-Host "User installation" -ForegroundColor Cyan
+#Get list of installed location IDs
+$installedGuidsPath = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Installer\UpgradeCodes\15E4D53F33F0C6248B8AE3FCA4BDCFF5"
+Write-Host ("Testing Installed Guid Path in Registry '{0}' (User installation)" -f $installedGuidsPath)
+if (!(Test-Path -Path $installedGuidsPath)) {
+    Write-Host "Installed Guid Path in Registry not found. Skipping User installation path"
 }
 else {
     Write-Host "OK" -ForegroundColor Green
 
     #Backup
-    Write-Host ("Creating backup of Registry '{0}'" -f $userInstallRegKey)
-    & reg export "HKEY_CURRENT_USER\Software\Microsoft\Installer\Products\58D5223B65144A744983A125B70FC7A1" "c:\AvdClientRepair\58D5223B65144A744983A125B70FC7A1.reg"
+    Write-Host ("Creating backup of Registry '{0}'" -f $installedGuidsPath)
+    & reg export "HKEY_CURRENT_USER\Software\Microsoft\Installer\UpgradeCodes\15E4D53F33F0C6248B8AE3FCA4BDCFF5" "c:\AvdClientRepair\15E4D53F33F0C6248B8AE3FCA4BDCFF5_UserInstall.reg"
     Write-Host "OK" -ForegroundColor Green
 
-    Write-Host ("Getting Uninstall GUID from Product...")
-    #get Details
-    $ProductDetails = Get-Item -Path $userInstallRegKey
-    #Check ProductIcon for GUID
-    if ($null -eq $ProductDetails.GetValue("ProductIcon")) {
-        Write-Warning "BUG! ProductIcon not found?? Please report to admin"
-        continue
-    }
+    #get Guids
+    Write-Host ("Getting installed GUIDs...")
+    $listOfInstalledGuids = Get-Item -Path $installedGuidsPath
+    Write-Host ("Found {0} Installed GUID(s). Checking all if any found..." -f $listOfInstalledGuids.Property.Count)
     
-    #Get ProductGuid
-    $ProductId = $ProductDetails.GetValue("ProductIcon").Split("\") | Where-Object { $_ -like "{*" }
-    if ($null -eq $ProductId) {
-        Write-Warning "BUG! ProductId not found?? Please report to admin"
-        continue
-    }
-    Write-Host "OK" -ForegroundColor Green
+    #Loop
+    foreach ($installedGuid in $listOfInstalledGuids.Property) {
+        #test if path is still valid (can be older install location)
+        $productPath = ("Registry::HKEY_CURRENT_USER\Software\Microsoft\Installer\Products\{0}" -f $installedGuid)
+        if (!(Test-Path -Path $productPath)) {
+            Write-Host ("Trace found of old installation! ==> '{0}'" -f $productPath) -ForegroundColor Cyan
 
-    #test if uninstall path is found
-    $uninstallRegPath = ("Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{0}" -f $ProductId)
-    Write-Host ("Testing Installed Path in Registry '{0}'" -f $uninstallRegPath)
-    if (!(Test-Path -Path $uninstallRegPath)) {
-        Write-Warning ("Installed Path not found @ '{0}'. Possible old intallation trace..." -f $uninstallRegPath)
-        #Removing
-        Write-Host ("Do you want to remove this old entry? (Recommended to remove!)") -ForegroundColor Cyan
-        $response = Get-PromptResponse -Prompt "Y/N"
-        if ($response -eq "Y") {
-            Remove-Item -Path $userInstallRegKey -Recurse -Force
-            Write-Host "Removed" -ForegroundColor Green
+            #Removing
+            Write-Host ("Do you want to remove this old entry? (Recommended to remove!)") -ForegroundColor Cyan
+            $response = Get-PromptResponse -Prompt "Y/N"
+            if ($response -eq "Y") {
+                Remove-ItemProperty -Path $installedGuidsPath -Name $installedGuid -Force
+                Write-Host "Removed" -ForegroundColor Green
+            }
+            else {
+                Write-Host "Skipping..."
+            }
         }
         else {
-            Write-Host "Skipping..."
+            Write-Host ("Active installation found at location: '{0}'" -f $productPath) -ForegroundColor Green
+            #Backup
+            $shortProductPath = $productPath.Replace("Registry::", "")
+            Write-Host ("Creating backup of Registry '{0}'" -f $shortProductPath)
+            & reg export $shortProductPath "c:\AvdClientRepair\$installedGuid-userinstall.reg"
+            Write-Host "OK" -ForegroundColor Green
+
+            Write-Host ("Getting Uninstall GUID from Product...")
+            #get Details
+            $ProductDetails = Get-Item -Path $productPath
+            #Check ProductIcon for GUID
+            if ($null -eq $ProductDetails.GetValue("ProductIcon")) {
+                Write-Warning "BUG! ProductIcon not found?? Please report to admin"
+                continue
+            }
+    
+            #Get ProductGuid
+            $ProductId = $ProductDetails.GetValue("ProductIcon").Split("\") | Where-Object { $_ -like "{*" }
+            if ($null -eq $ProductId) {
+                Write-Warning "BUG! ProductId not found?? Please report to admin"
+                continue
+            }
+            Write-Host "OK" -ForegroundColor Green
+
+            #test if uninstall path is found
+            $uninstallRegPath = ("Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{0}" -f $ProductId)
+            Write-Host ("Testing Installed Path in Registry '{0}'" -f $uninstallRegPath)
+            if (!(Test-Path -Path $uninstallRegPath)) {
+                Write-Warning ("Installed Path not found @ '{0}'. Possible old intallation trace..." -f $uninstallRegPath)
+                #Removing
+                Write-Host ("Do you want to remove this old entry? (Recommended to remove!)") -ForegroundColor Cyan
+                $response = Get-PromptResponse -Prompt "Y/N"
+                if ($response -eq "Y") {
+                    Remove-Item -Path $productPath -Recurse -Force
+                    Remove-ItemProperty -Path $installedGuidsPath -Name $installedGuid -Force
+                    Write-Host "Removed" -ForegroundColor Green
+                }
+                else {
+                    Write-Host "Skipping..."
+                }
+                continue
+            }
+            Write-Host "OK" -ForegroundColor Green
+
+            Write-Host "Validating content..."
+            $UninstallInfo = Get-Item -Path $uninstallRegPath
+            #test if uninstall path is from AVD client
+            $installPath = $UninstallInfo.GetValue("InstallLocation")
+            if (!($installPath -like "*\Remote Desktop\*")) {
+                Write-Warning ("BUG! InstallLocation is not for AVD?? ('{0}') Please report to admin" -f $installPath)
+                continue
+            }
+
+            Write-Host ("Installed Path in Registry is OK! '{0}'" -f $installPath) -ForegroundColor Green
+            #Backup
+            $shortInstallPath = $uninstallRegPath.Replace("Registry::", "")
+            Write-Host ("Creating backup of Registry '{0}'" -f $shortInstallPath)
+            & reg export $shortInstallPath "c:\AvdClientRepair\$ProductId.reg"
+            Write-Host "OK" -ForegroundColor Green
+
+            Write-Host ("Do you want to remove this Uninstall Registry entry? (Recommended to remove!)") -ForegroundColor Cyan
+            $response = Get-PromptResponse -Prompt "Y/N"
+            if ($response -eq "Y") {
+                Remove-Item -Path $uninstallRegPath -Force
+                Write-Host "Removed" -ForegroundColor Green
+            }
+            else {
+                Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
+                continue
+            }
+
+            #Check physical path of AVD client
+            Write-Host "Checking Installation Path of AVD client..."
+            if (!(Test-Path -Path $installPath)) {
+                Write-Warning ("BUG! InstallLocation is not found ('{0}') Please report to admin" -f $installPath)
+                continue
+            }
+
+            Write-Host ("Installed Path is OK! '{0}'" -f $installPath) -ForegroundColor Green
+            Write-Host ("Do you want to remove this Folder? (Recommended to remove!)") -ForegroundColor Cyan
+            $response = Get-PromptResponse -Prompt "Y/N"
+            if ($response -eq "Y") {
+                Remove-Item -Path $installPath -Recurse -Force
+                Write-Host "Removed" -ForegroundColor Green
+            }
+            else {
+                Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
+                continue
+            }
+
+            #Cleanup of the Product Path (final step)
+            Remove-ItemProperty -Path $installedGuidsPath -Name $installedGuid -Force
+            Remove-Item -Path $productPath -Recurse -Force
         }
-        continue
     }
-    Write-Host "OK" -ForegroundColor Green
-
-    Write-Host "Validating content..."
-    $UninstallInfo = Get-Item -Path $uninstallRegPath
-    #test if uninstall path is from AVD client
-    $installPath = $UninstallInfo.GetValue("InstallLocation")
-    if (!($installPath -like "*\Remote Desktop\*")) {
-        Write-Warning ("BUG! InstallLocation is not for AVD?? ('{0}') Please report to admin" -f $installPath)
-        continue
-    }
-
-    Write-Host ("Installed Path in Registry is OK! '{0}'" -f $installPath) -ForegroundColor Green
-    #Backup
-    $shortInstallPath = $uninstallRegPath.Replace("Registry::", "")
-    Write-Host ("Creating backup of Registry '{0}'" -f $shortInstallPath)
-    & reg export $shortInstallPath "c:\AvdClientRepair\$ProductId.reg"
-    Write-Host "OK" -ForegroundColor Green
-
-    Write-Host ("Do you want to remove this Uninstall Registry entry? (Recommended to remove!)") -ForegroundColor Cyan
-    $response = Get-PromptResponse -Prompt "Y/N"
-    if ($response -eq "Y") {
-        Remove-Item -Path $uninstallRegPath -Force
-        Write-Host "Removed" -ForegroundColor Green
-    }
-    else {
-        Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
-        continue
-    }
-
-    #Check physical path of AVD client
-    Write-Host "Checking Installation Path of AVD client..."
-    if (!(Test-Path -Path $installPath)) {
-        Write-Warning ("BUG! InstallLocation is not found ('{0}') Please report to admin" -f $installPath)
-        continue
-    }
-
-    Write-Host ("Installed Path is OK! '{0}'" -f $installPath) -ForegroundColor Green
-    Write-Host ("Do you want to remove this Folder? (Recommended to remove!)") -ForegroundColor Cyan
-    $response = Get-PromptResponse -Prompt "Y/N"
-    if ($response -eq "Y") {
-        Remove-Item -Path $installPath -Recurse -Force
-        Write-Host "Removed" -ForegroundColor Green
-    }
-    else {
-        Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
-        continue
-    }
-
-    #Cleanup of the Product Path (final step)
-    Remove-Item -Path $userInstallRegKey -Recurse -Force
+    Write-Host "Loop done" -ForegroundColor Green
 }
 #endregion
 
