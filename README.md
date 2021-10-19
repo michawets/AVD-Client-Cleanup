@@ -25,6 +25,12 @@ Invoke-WebRequest -Uri $Uri -OutFile ".\AVD_Client_cleanup.ps1"
 
 ## Example commands
 
+This example will start the script in default mode, prompting for each cleanup
+
+```
+& '.\AVD_Client_cleanup.ps1'
+```
+
 This example will clean up everything found without prompting for confirmation
 
 ```
