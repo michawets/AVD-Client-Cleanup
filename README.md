@@ -15,6 +15,8 @@ After the cleanup, your default browser will open to download the latest version
 
 This will help you download the script:
 
+ - Open a new Powershell window **AS ADMINISTRATOR**
+
 ```
 New-Item -ItemType Directory -Path "C:\Temp" -Force
 Set-Location -Path "C:\Temp"
