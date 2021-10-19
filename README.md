@@ -1,10 +1,12 @@
 # AVD-Client-Cleanup
 
-This script is to help you clean up an AVD Client installation (also know as *Remote Desktop Client for AVD* or *Windows Desktop client for AVD*).<br/>
+This script will help you clean up an AVD Client installation (also know as *Remote Desktop Client for AVD* or *Windows Desktop client for AVD*).<br/>
 This could be helpful when you are unable to uninstall or update an existing installation.<br/>
 After the cleanup, your default browser will open to download the latest version of the AVD Client.
 
  > This script only deals with the Windows Installer edition of the AVD client. The Microsoft Store version is not in scope!
+
+[Blog: https://www.cloud-architect.be/2021/10/19/avd-client-cleanup/](https://www.cloud-architect.be/2021/10/19/avd-client-cleanup/)
 
 ## Parameters
 
