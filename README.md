@@ -11,18 +11,30 @@ After the cleanup, your default browser will open to download the latest version
  - -SilentRun<br/>This parameter will remove all prompts and will remove all found entries automatically.
  - -RemovePersonalSettings<br/>This parameter will allow the script to clean up all personal settings in the registry. By default, this will be skipped, keeping your entries in the client when installing the AVD client again.
 
+## Download script
+
+This will help you download the script:
+
+```
+New-Item -ItemType Directory -Path "C:\Temp" -Force
+Set-Location -Path "C:\Temp"
+$Uri = "https://raw.githubusercontent.com/michawets/AVD-Client-Cleanup/main/AVD_Client_cleanup.ps1"
+# Download the script
+Invoke-WebRequest -Uri $Uri -OutFile ".\AVD_Client_cleanup.ps1"
+```
+
 ## Example commands
 
 This example will clean up everything found without prompting for confirmation
 
 ```
-& '.\AVD Client cleanup.ps1' -SilentRun
+& '.\AVD_Client_cleanup.ps1' -SilentRun
 ```
 
 This example will clean up without confirmation, and will also clean up Personal Settings from the AVD Client (Full cleanup)
 
 ```
-& '.\AVD Client cleanup.ps1' -SilentRun -RemovePersonalSettings
+& '.\AVD_Client_cleanup.ps1' -SilentRun -RemovePersonalSettings
 ```
 
 ## Cleanup locations
