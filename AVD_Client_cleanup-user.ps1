@@ -124,8 +124,8 @@ else {
                 Write-Host ("Do you want to remove this old entry? (Recommended to remove!)") -ForegroundColor Cyan
                 $response = Get-PromptResponse -Prompt "Y/N"
                 if ($response -eq "Y") {
-                    Remove-Item -Path $productPath -Recurse -Force
-                    Remove-ItemProperty -Path $installedGuidsPath -Name $installedGuid -Force
+                    Remove-Item -Path $productPath -Recurse -Force -ErrorAction SilentlyContinue
+                    Remove-ItemProperty -Path $installedGuidsPath -Name $installedGuid -Force -ErrorAction SilentlyContinue
                     Write-Host "Removed" -ForegroundColor Green
                 }
                 else {
