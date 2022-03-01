@@ -22,7 +22,7 @@ Set-Location -Path "C:\Temp"
 $Uri = "https://raw.githubusercontent.com/michawets/AVD-Client-Cleanup/main/FixClient/AVD_Client_cleanup-system.ps1"
 # Download the script
 Invoke-WebRequest -Uri $Uri -OutFile ".\AVD_Client_cleanup-system.ps1"
-
+# Run the script
 & '.\AVD_Client_cleanup-system.ps1' -SilentRun
 ```
 
@@ -34,6 +34,6 @@ Set-Location -Path "C:\Temp"
 $Uri = "https://raw.githubusercontent.com/michawets/AVD-Client-Cleanup/main/FixClient/AVD_Client_cleanup-user.ps1"
 # Download the script
 Invoke-WebRequest -Uri $Uri -OutFile ".\AVD_Client_cleanup-user.ps1"
-
+# Run the script
 & '.\AVD_Client_cleanup-user.ps1' -SilentRun
 ```
