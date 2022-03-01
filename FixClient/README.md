@@ -19,7 +19,7 @@ The scripts will
 ```powershell
 New-Item -ItemType Directory -Path "C:\Temp" -Force
 Set-Location -Path "C:\Temp"
-$Uri = "https://raw.githubusercontent.com/michawets/AVD-Client-Cleanup/main/AVD_Client_cleanup-system.ps1"
+$Uri = "https://raw.githubusercontent.com/michawets/AVD-Client-Cleanup/main/FixClient/AVD_Client_cleanup-system.ps1"
 # Download the script
 Invoke-WebRequest -Uri $Uri -OutFile ".\AVD_Client_cleanup-system.ps1"
 
@@ -31,7 +31,7 @@ Invoke-WebRequest -Uri $Uri -OutFile ".\AVD_Client_cleanup-system.ps1"
 ```powershell
 New-Item -ItemType Directory -Path "C:\Temp" -Force
 Set-Location -Path "C:\Temp"
-$Uri = "https://raw.githubusercontent.com/michawets/AVD-Client-Cleanup/main/AVD_Client_cleanup-user.ps1"
+$Uri = "https://raw.githubusercontent.com/michawets/AVD-Client-Cleanup/main/FixClient/AVD_Client_cleanup-user.ps1"
 # Download the script
 Invoke-WebRequest -Uri $Uri -OutFile ".\AVD_Client_cleanup-user.ps1"
 
