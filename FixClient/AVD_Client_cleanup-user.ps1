@@ -158,8 +158,14 @@ else {
             Write-Host ("Do you want to remove this Uninstall Registry entry? (Recommended to remove!)") -ForegroundColor Cyan
             $response = Get-PromptResponse -Prompt "Y/N"
             if ($response -eq "Y") {
-                Remove-Item -Path $uninstallRegPath -Force
-                Write-Host "Removed" -ForegroundColor Green
+                try {
+                    Remove-Item -Path $uninstallRegPath -Force
+                    Write-Host "Removed" -ForegroundColor Green
+                }
+                catch {
+                    Write-Host "Removal did not work. Skipping for now" -ForegroundColor Yellow
+                    Write-Host ($_ | ConvertTo-Json -Compress)
+                }
             }
             else {
                 Write-Host "Skipping (NOT RECOMMENDED AND NO GOOD CLEANUP IS DONE)..." -ForegroundColor Red
